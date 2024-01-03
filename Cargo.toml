@@ -1,0 +1,12 @@
+[package]
+name = "doppler-swarm"
+version = "0.1.0"
+edition = "2021"
+authors = ["Pavel Lazureykis <pavel@lazureykis.dev>"]
+description = "Watch for changes in Doppler and update your Docker Swarm services."
+license = "MIT"
+homepage = "https://github.com/lazureykis/doppler-swarm/"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
