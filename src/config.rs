@@ -12,7 +12,7 @@ pub struct Config {
     pub watchers: Vec<Watcher>,
 }
 
-pub fn read_config() -> Result<Config, Error> {
+pub fn read_config() -> crate::result::Result<Config> {
     let config_file = std::env::args().nth(1).ok_or("no config file specified")?;
 
     let data = std::fs::read_to_string(&config_file)
