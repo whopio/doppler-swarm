@@ -1,11 +1,11 @@
-use futures::StreamExt;
-
 use crate::{
     config,
     secrets::fetch_secrets,
     watch::{parse_watch_event, WatchEvent},
 };
+use futures::StreamExt;
 
+#[derive(Debug, Clone)]
 pub struct Worker {
     watcher: config::Watcher,
     http: reqwest::Client,
@@ -35,7 +35,7 @@ impl Worker {
     pub async fn run(&self) {
         loop {
             if let Err(e) = self.watch_for_updates().await {
-                log::error!(
+                log::warn!(
                     "[{}] Failed to watch for updates: {}",
                     &self.watcher.name,
                     e
