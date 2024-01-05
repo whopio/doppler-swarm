@@ -8,9 +8,13 @@ mod worker;
 
 #[tokio::main]
 async fn main() -> crate::result::Result<()> {
+    // env_logger::init();
+    let env = env_logger::Env::default().filter_or("LOG_LEVEL", "info");
+    env_logger::init_from_env(env);
+
     let config = config::read_config()?;
 
-    println!("Starting {} watchers...", config.watchers.len());
+    log::info!("Starting {} watchers...", config.watchers.len());
 
     let mut handles = vec![];
 
@@ -25,7 +29,7 @@ async fn main() -> crate::result::Result<()> {
 
     futures::future::join_all(handles).await;
 
-    println!("Done.");
+    log::info!("Done.");
 
     Ok(())
 }

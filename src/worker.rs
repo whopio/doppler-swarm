@@ -33,7 +33,7 @@ impl Worker {
     }
 
     pub async fn run(&self) {
-        println!("Fetching secrets for {}", &self.watcher.name);
+        log::info!("Fetching secrets for {}", &self.watcher.name);
 
         self.sync_secrets().await;
         self.watch_for_updates().await;
@@ -52,9 +52,9 @@ impl Worker {
                     .await
                     .unwrap();
 
-                println!("Updated {}", service);
+                log::info!("Updated {}", service);
             } else {
-                println!("No changes detected for {}", service);
+                log::info!("No changes detected for {}", service);
             }
         }
     }
