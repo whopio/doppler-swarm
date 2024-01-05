@@ -9,12 +9,8 @@ mod worker;
 #[tokio::main]
 async fn main() -> crate::result::Result<()> {
     let config = config::read_config()?;
-    dbg!(&config);
 
-    docker::get_current_env_vars("myservice").await.ok();
-    // return Ok(());
-
-    println!("Starting with {} watchers...", config.watchers.len());
+    println!("Starting {} watchers...", config.watchers.len());
 
     let mut handles = vec![];
 
@@ -29,7 +25,7 @@ async fn main() -> crate::result::Result<()> {
 
     futures::future::join_all(handles).await;
 
-    println!("Done!");
+    println!("Done.");
 
     Ok(())
 }

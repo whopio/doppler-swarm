@@ -33,22 +33,19 @@ impl Worker {
     }
 
     pub async fn run(&self) {
-        println!("Fetching {}", &self.watcher.doppler_token);
+        println!("Fetching secrets for {}", &self.watcher.name);
 
         self.sync_secrets().await;
         self.watch_for_updates().await;
     }
 
     pub async fn sync_secrets(&self) {
-        println!("Updating secrets");
         let doppler_secrets = fetch_secrets(&self.http, &self.watcher.doppler_token)
             .await
             .unwrap();
 
-        dbg!(&doppler_secrets);
         for service in &self.watcher.docker_services {
             let docker_secrets = crate::docker::get_current_env_vars(service).await.unwrap();
-            dbg!(&docker_secrets);
 
             if should_update_docker_service(&doppler_secrets, &docker_secrets) {
                 crate::docker::update_service(service, doppler_secrets.clone())
@@ -57,7 +54,7 @@ impl Worker {
 
                 println!("Updated {}", service);
             } else {
-                println!("No changes for {}", service);
+                println!("No changes detected for {}", service);
             }
         }
     }
@@ -76,8 +73,6 @@ impl Worker {
             let Ok(event) = parse_watch_event(&item) else {
                 continue;
             };
-
-            println!("{:?}", event);
 
             if WatchEvent::SecretsUpdate == event {
                 self.sync_secrets().await;
