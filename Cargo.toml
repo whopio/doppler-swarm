@@ -11,12 +11,14 @@ keywords = ["doppler", "docker swarm", "secrets", "configuration"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bollard = { version = "0.15.0", features = ["tokio-stream"] }
+bollard = { version = "0.15.0" }
 bytes = "1.5.0"
 env_logger = "0.10.1"
 futures = "0.3.30"
 log = "0.4.20"
-reqwest = { version = "0.11.23", features = ["stream", "json"] }
+reqwest = { version = "0.11.23", default-features = false, features = ["stream", "rustls-tls", "rustls-tls-webpki-roots"] }
+rustls = "0.22.1"
 serde = { version = "1.0.194", features = ["derive"] }
 serde_json = "1.0.110"
 tokio = { version = "1.35.1", features = ["full"] }
+webpki-roots = "0.26.0"
