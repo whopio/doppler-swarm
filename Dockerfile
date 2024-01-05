@@ -1,5 +1,5 @@
 # Builder
-FROM rust:1-slim-buster AS builder
+FROM rust:1-slim-bookworm AS builder
 RUN apt-get update && apt-get upgrade -y && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -10,7 +10,7 @@ RUN cargo build --release
 
 
 # Runner
-FROM debian:buster-slim
+FROM debian:bookworm-slim
 RUN apt-get update && apt-get upgrade -y && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
