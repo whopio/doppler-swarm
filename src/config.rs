@@ -26,7 +26,7 @@ pub fn read_config() -> crate::result::Result<Config> {
 
 pub fn validate_config(config: &Config) -> crate::result::Result<()> {
     let mut services_seen = vec![];
-    let mut services_seen_twice = vec![];
+
     for watcher in &config.watchers {
         if watcher.name.is_empty() {
             return Err("Configuration error: watcher name cannot be empty".into());
@@ -46,19 +46,15 @@ pub fn validate_config(config: &Config) -> crate::result::Result<()> {
             }
 
             if services_seen.contains(service) {
-                services_seen_twice.push(service.to_owned());
+                return Err(format!(
+                    "Configuration error: service {} is used in multiple watchers",
+                    service
+                )
+                .into());
             } else {
                 services_seen.push(service.to_owned());
             }
         }
-    }
-
-    for service in services_seen_twice {
-        return Err(format!(
-            "Configuration error: service {} is used in multiple watchers",
-            service
-        )
-        .into());
     }
 
     Ok(())
