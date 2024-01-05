@@ -17,13 +17,28 @@ async fn main() -> crate::result::Result<()> {
 
     let mut handles = vec![];
 
-    for watcher in config.watchers {
-        let handle = tokio::spawn(async move {
-            let fetcher = worker::Worker::new(watcher.clone());
-            fetcher.run().await
-        });
+    {
+        let mut fetchers = Vec::with_capacity(config.watchers.len());
 
-        handles.push(handle);
+        for watcher in config.watchers {
+            let fetcher = worker::Worker::new(watcher.clone());
+            if let Err(e) = fetcher.sync_secrets().await {
+                return Err(error::Error::from(format!(
+                    "[{}] Failed to sync secrets: {}",
+                    &watcher.name, e
+                )));
+            }
+
+            fetchers.push(fetcher);
+        }
+
+        for fetcher in fetchers {
+            let handle = tokio::spawn(async move {
+                fetcher.run().await;
+            });
+
+            handles.push(handle);
+        }
     }
 
     futures::future::join_all(handles).await;
