@@ -27,10 +27,9 @@ async fn main() -> crate::result::Result<()> {
             let startup_handle = tokio::spawn(async move {
                 let fetcher = worker::Worker::new(watcher.clone());
                 if let Err(e) = fetcher.sync_secrets().await {
-                    return Err(error::Error::from(format!(
-                        "[{}] Failed to sync secrets: {}",
-                        &watcher.name, e
-                    )));
+                    let error_msg = format!("[{}] Failed to sync secrets: {}", &watcher.name, e);
+                    log::error!("{error_msg}");
+                    return Err(error_msg.into());
                 }
 
                 Ok(fetcher)
@@ -52,10 +51,13 @@ async fn main() -> crate::result::Result<()> {
                     handles.push(handle);
                 }
                 Ok(Err(e)) => {
+                    log::error!("Failed to start watcher: {e}");
                     return Err(e);
                 }
                 _ => {
-                    return Err(format!("Failed to start watcher: {:?}", fetcher_result).into());
+                    let error_msg = format!("Failed to start watcher: {:?}", fetcher_result);
+                    log::error!("{error_msg}");
+                    return Err(error_msg.into());
                 }
             }
         }

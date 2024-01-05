@@ -35,7 +35,7 @@ impl Worker {
     pub async fn run(&self) {
         loop {
             if let Err(e) = self.watch_for_updates().await {
-                log::error!(
+                log::warn!(
                     "[{}] Failed to watch for updates: {}",
                     &self.watcher.name,
                     e
