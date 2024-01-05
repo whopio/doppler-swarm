@@ -30,7 +30,8 @@ pub async fn update_service(
 
     let current_service = docker
         .inspect_service(service_name, None::<InspectServiceOptions>)
-        .await?;
+        .await
+        .map_err(|e| format!("Failed to inspect service {}: {}", service_name, e))?;
 
     let current_version = current_service
         .version
@@ -57,7 +58,8 @@ pub async fn update_service(
             // Update the service with the modified spec
             docker
                 .update_service(service_name, current_spec, options, None)
-                .await?;
+                .await
+                .map_err(|e| format!("[{}] Failed to update service: {}", service_name, e))?;
         }
     }
 

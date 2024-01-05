@@ -1,5 +1,3 @@
-use crate::error::Error;
-
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct Watcher {
     pub name: String,
@@ -19,7 +17,6 @@ pub fn read_config() -> crate::result::Result<Config> {
         .map_err(|e| format!("Failed to read config file {}: {}", &config_file, e))?;
 
     let config = serde_json::from_str(&data)
-        .map_err(Error::from)
         .map_err(|e| format!("Failed to parse config file {}: {}", &config_file, e))?;
 
     Ok(config)
