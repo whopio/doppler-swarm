@@ -11,6 +11,8 @@ use tokio::time::timeout;
 pub struct Worker {
     watcher: config::Watcher,
     http: reqwest::Client,
+    stop: tokio::sync::watch::Receiver<bool>,
+    wanna_stop: bool,
 }
 
 pub fn should_update_docker_service(
@@ -29,21 +31,28 @@ pub fn should_update_docker_service(
 }
 
 impl Worker {
-    pub fn new(watcher: config::Watcher) -> Self {
+    pub fn new(watcher: config::Watcher, stop: tokio::sync::watch::Receiver<bool>) -> Self {
         let http = reqwest::ClientBuilder::new()
             .use_rustls_tls()
             .connect_timeout(std::time::Duration::from_secs(10))
             .build()
             .expect("Cannot build http client");
 
-        Self { watcher, http }
+        Self {
+            watcher,
+            http,
+            stop,
+            wanna_stop: false,
+        }
     }
 
-    pub async fn run(&self) {
-        loop {
+    pub async fn run(&mut self) {
+        while !self.wanna_stop {
             if let Err(e) = self.watch_for_updates().await {
                 log::warn!("{e}");
-                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                if !self.wanna_stop {
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                }
             }
         }
     }
@@ -74,7 +83,7 @@ impl Worker {
         Ok(())
     }
 
-    pub async fn watch_for_updates(&self) -> crate::result::Result<()> {
+    pub async fn watch_for_updates(&mut self) -> crate::result::Result<()> {
         let response = self
             .http
             .get("https://api.doppler.com/v3/configs/config/secrets/watch?include_dynamic_secrets=false&include_managed_secrets=false")
@@ -87,46 +96,54 @@ impl Worker {
         let mut buf: Vec<u8> = Vec::with_capacity(1024);
 
         loop {
-            // Doppler sends ping event every 30 seconds.
-            // If we don't receive any events for 60 seconds, we assume that the connection is dead.
-            match timeout(std::time::Duration::from_secs(60), stream.next()).await {
-                Ok(Some(Ok(item))) => {
-                    buf.extend_from_slice(&item);
-                    if !buf.ends_with(b"\n\n") {
-                        continue;
-                    }
+            tokio::select! {
+                _ = self.stop.changed() => {
+                    self.wanna_stop = *self.stop.borrow();
+                    return Ok(());
+                }
+                // Doppler sends ping event every 30 seconds.
+                // If we don't receive any events for 60 seconds, we assume that the connection is dead.
+                resp = timeout(std::time::Duration::from_secs(60), stream.next()) => {
+                    match resp {
+                         Ok(Some(Ok(item))) => {
+                            buf.extend_from_slice(&item);
+                            if !buf.ends_with(b"\n\n") {
+                                continue;
+                            }
 
-                    let buf_copy: Bytes = Bytes::copy_from_slice(&buf);
-                    buf.clear();
-                    match parse_watch_event(&buf_copy) {
-                        Ok(WatchEvent::SecretsUpdate) => {
-                            self.sync_secrets().await?;
+                            let buf_copy: Bytes = Bytes::copy_from_slice(&buf);
+                            buf.clear();
+                            match parse_watch_event(&buf_copy) {
+                                Ok(WatchEvent::SecretsUpdate) => {
+                                    self.sync_secrets().await?;
+                                }
+                                Ok(WatchEvent::Ping) => {
+                                    log::debug!("[{}] Received event: Ping", &self.watcher.name);
+                                }
+                                Ok(WatchEvent::Connected) => {
+                                    log::info!("[{}] Received event: Connected", &self.watcher.name);
+                                }
+                                Err(e) => {
+                                    return Err(e);
+                                }
+                            }
                         }
-                        Ok(WatchEvent::Ping) => {
-                            log::debug!("[{}] Received event: Ping", &self.watcher.name);
+                        Ok(Some(Err(e))) => {
+                            return Err(format!(
+                                "[{}] Failed to read watch stream: {}",
+                                &self.watcher.name, e
+                            )
+                            .into())
                         }
-                        Ok(WatchEvent::Connected) => {
-                            log::info!("[{}] Received event: Connected", &self.watcher.name);
-                        }
-                        Err(e) => {
-                            return Err(e);
+                        Ok(None) => return Err("Watch stream ended unexpectedly".into()),
+                        Err(_) => {
+                            return Err(format!(
+                                "[{}] Watch stream timed out after 60 seconds",
+                                &self.watcher.name
+                            )
+                            .into());
                         }
                     }
-                }
-                Ok(Some(Err(e))) => {
-                    return Err(format!(
-                        "[{}] Failed to read watch stream: {}",
-                        &self.watcher.name, e
-                    )
-                    .into())
-                }
-                Ok(None) => return Err("Watch stream ended unexpectedly".into()),
-                Err(_) => {
-                    return Err(format!(
-                        "[{}] Watch stream timed out after 60 seconds",
-                        &self.watcher.name
-                    )
-                    .into());
                 }
             }
         }

@@ -16,6 +16,8 @@ async fn main() -> crate::result::Result<()> {
 
     let config = config::read_config()?;
 
+    let (tx, rx) = tokio::sync::watch::channel(false);
+
     log::info!("Starting {} watchers...", config.watchers.len());
 
     let mut handles = Vec::with_capacity(config.watchers.len());
@@ -24,8 +26,9 @@ async fn main() -> crate::result::Result<()> {
         let mut startup_handles = Vec::with_capacity(config.watchers.len());
 
         for watcher in config.watchers {
+            let rx = rx.clone();
             let startup_handle = tokio::spawn(async move {
-                let fetcher = worker::Worker::new(watcher.clone());
+                let fetcher = worker::Worker::new(watcher.clone(), rx);
                 if let Err(e) = fetcher.sync_secrets().await {
                     let error_msg = format!("[{}] Failed to sync secrets: {}", &watcher.name, e);
                     log::error!("{error_msg}");
@@ -43,7 +46,7 @@ async fn main() -> crate::result::Result<()> {
 
         for fetcher_result in fetchers {
             match fetcher_result {
-                Ok(Ok(fetcher)) => {
+                Ok(Ok(mut fetcher)) => {
                     let handle = tokio::spawn(async move {
                         fetcher.run().await;
                     });
@@ -62,6 +65,24 @@ async fn main() -> crate::result::Result<()> {
             }
         }
     }
+
+    tokio::spawn(async move {
+        let mut sigint = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())
+            .expect("Failed to create SIGINT signal handler");
+        let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("Failed to create SIGTERM signal handler");
+
+        tokio::select! {
+            _ = sigint.recv() => {
+                log::info!("Received SIGINT, shutting down...");
+                tx.send(true).expect("Failed to send shutdown signal");
+            }
+            _ = sigterm.recv() => {
+                log::info!("Received SIGTERM, shutting down...");
+                tx.send(true).expect("Failed to send shutdown signal");
+            }
+        }
+    });
 
     futures::future::join_all(handles).await;
 
