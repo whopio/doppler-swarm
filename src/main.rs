@@ -8,7 +8,6 @@ mod worker;
 
 #[tokio::main]
 async fn main() -> crate::result::Result<()> {
-    // env_logger::init();
     let env = env_logger::Env::default().filter_or("LOG_LEVEL", "info");
     env_logger::init_from_env(env);
 
