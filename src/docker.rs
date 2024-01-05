@@ -34,13 +34,13 @@ pub async fn update_service(
 
     let current_version = current_service
         .version
-        .expect("Cannot get docker service version")
+        .ok_or_else(|| format!("[{}] Cannot get docker service version", service_name))?
         .index
-        .expect("Cannot get docker service version index");
+        .ok_or_else(|| format!("[{}] Cannot get docker service version index", service_name))?;
 
     let mut current_spec = current_service
         .spec
-        .expect("Cannot get docker service spec");
+        .ok_or_else(|| format!("[{}] Cannot get docker service spec", service_name))?;
 
     // Update the existing ServiceSpec with new environment variables
     current_spec.name = Some(service_name.to_string());

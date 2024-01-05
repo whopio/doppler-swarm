@@ -24,8 +24,12 @@ pub fn parse_watch_event(raw_payload: &Bytes) -> Result<WatchEvent, Error> {
         return Err("invalid event".into());
     }
 
-    let event: EventPayload = serde_json::from_slice(&raw_payload[20..])
-        .map_err(|e| format!("failed to parse event payload: {e}"))?;
+    let event: EventPayload = serde_json::from_slice(&raw_payload[20..]).map_err(|e| {
+        format!(
+            "Failed to parse event payload: {}. Payload: {:?}",
+            e, raw_payload
+        )
+    })?;
 
     Ok(event.event_type)
 }
