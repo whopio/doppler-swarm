@@ -4,6 +4,7 @@ use crate::{
     watch::{parse_watch_event, WatchEvent},
 };
 use futures::StreamExt;
+use tokio::time::timeout;
 
 #[derive(Debug, Clone)]
 pub struct Worker {
@@ -28,18 +29,19 @@ pub fn should_update_docker_service(
 
 impl Worker {
     pub fn new(watcher: config::Watcher) -> Self {
-        let http = reqwest::Client::new();
+        let http = reqwest::ClientBuilder::new()
+            .use_rustls_tls()
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .build()
+            .expect("Cannot build http client");
+
         Self { watcher, http }
     }
 
     pub async fn run(&self) {
         loop {
             if let Err(e) = self.watch_for_updates().await {
-                log::warn!(
-                    "[{}] Failed to watch for updates: {}",
-                    &self.watcher.name,
-                    e
-                );
+                log::warn!("{e}");
                 tokio::time::sleep(std::time::Duration::from_secs(5)).await;
             }
         }
@@ -56,6 +58,8 @@ impl Worker {
                 .map_err(|e| format!("[{}] Failed to get current env vars: {}", service, e))?;
 
             if should_update_docker_service(&doppler_secrets, &docker_secrets) {
+                log::info!("[{}] [{}] Updating service...", &self.watcher.name, service);
+
                 crate::docker::update_service(service, doppler_secrets.clone())
                     .await
                     .map_err(|e| format!("[{}] Failed to update docker service: {}", service, e))?;
@@ -79,16 +83,40 @@ impl Worker {
             .map_err(|e| format!("[{}] Failed to watch for updates: {}", &self.watcher.name, e))?;
 
         let mut stream = response.bytes_stream();
-        while let Some(Ok(item)) = stream.next().await {
-            let Ok(event) = parse_watch_event(&item) else {
-                continue;
-            };
-
-            if WatchEvent::SecretsUpdate == event {
-                self.sync_secrets().await?;
+        loop {
+            // Doppler sends ping event every 30 seconds.
+            // If we don't receive any events for 60 seconds, we assume that the connection is dead.
+            match timeout(std::time::Duration::from_secs(60), stream.next()).await {
+                Ok(Some(Ok(item))) => match parse_watch_event(&item) {
+                    Ok(WatchEvent::SecretsUpdate) => {
+                        self.sync_secrets().await?;
+                    }
+                    Ok(WatchEvent::Ping) => {
+                        log::debug!("[{}] Received event: Ping", &self.watcher.name);
+                    }
+                    Ok(WatchEvent::Connected) => {
+                        log::info!("[{}] Received event: Connected", &self.watcher.name);
+                    }
+                    Err(e) => {
+                        return Err(e.into());
+                    }
+                },
+                Ok(Some(Err(e))) => {
+                    return Err(format!(
+                        "[{}] Failed to read watch stream: {}",
+                        &self.watcher.name, e
+                    )
+                    .into())
+                }
+                Ok(None) => return Err("Watch stream ended unexpectedly".into()),
+                Err(_) => {
+                    return Err(format!(
+                        "[{}] Watch stream timed out after 60 seconds",
+                        &self.watcher.name
+                    )
+                    .into());
+                }
             }
         }
-
-        Ok(())
     }
 }
