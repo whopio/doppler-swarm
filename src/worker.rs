@@ -3,6 +3,7 @@ use crate::{
     secrets::fetch_secrets,
     watch::{parse_watch_event, WatchEvent},
 };
+use bytes::Bytes;
 use futures::StreamExt;
 use tokio::time::timeout;
 
@@ -83,24 +84,35 @@ impl Worker {
             .map_err(|e| format!("[{}] Failed to watch for updates: {}", &self.watcher.name, e))?;
 
         let mut stream = response.bytes_stream();
+        let mut buf: Vec<u8> = Vec::with_capacity(1024);
+
         loop {
             // Doppler sends ping event every 30 seconds.
             // If we don't receive any events for 60 seconds, we assume that the connection is dead.
             match timeout(std::time::Duration::from_secs(60), stream.next()).await {
-                Ok(Some(Ok(item))) => match parse_watch_event(&item) {
-                    Ok(WatchEvent::SecretsUpdate) => {
-                        self.sync_secrets().await?;
+                Ok(Some(Ok(item))) => {
+                    buf.extend_from_slice(&item);
+                    if !buf.ends_with(b"\n\n") {
+                        continue;
                     }
-                    Ok(WatchEvent::Ping) => {
-                        log::debug!("[{}] Received event: Ping", &self.watcher.name);
+
+                    let buf_copy: Bytes = Bytes::copy_from_slice(&buf);
+                    buf.clear();
+                    match parse_watch_event(&buf_copy) {
+                        Ok(WatchEvent::SecretsUpdate) => {
+                            self.sync_secrets().await?;
+                        }
+                        Ok(WatchEvent::Ping) => {
+                            log::debug!("[{}] Received event: Ping", &self.watcher.name);
+                        }
+                        Ok(WatchEvent::Connected) => {
+                            log::info!("[{}] Received event: Connected", &self.watcher.name);
+                        }
+                        Err(e) => {
+                            return Err(e);
+                        }
                     }
-                    Ok(WatchEvent::Connected) => {
-                        log::info!("[{}] Received event: Connected", &self.watcher.name);
-                    }
-                    Err(e) => {
-                        return Err(e.into());
-                    }
-                },
+                }
                 Ok(Some(Err(e))) => {
                     return Err(format!(
                         "[{}] Failed to read watch stream: {}",
