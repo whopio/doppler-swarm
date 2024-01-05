@@ -1,9 +1,7 @@
-use crate::error::Error;
-
 pub async fn fetch_secrets(
     http: &reqwest::Client,
     doppler_token: &str,
-) -> Result<Vec<String>, Error> {
+) -> crate::result::Result<Vec<String>> {
     let response = http
         .get("https://api.doppler.com/v3/configs/config/secrets/download?format=docker")
         .bearer_auth(doppler_token)

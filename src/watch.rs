@@ -1,8 +1,6 @@
 use bytes::Bytes;
 use serde::Deserialize;
 
-use crate::error::Error;
-
 #[derive(Debug, Clone, Deserialize)]
 pub struct EventPayload {
     #[serde(rename = "type")]
@@ -19,7 +17,7 @@ pub enum WatchEvent {
     SecretsUpdate,
 }
 
-pub fn parse_watch_event(raw_payload: &Bytes) -> Result<WatchEvent, Error> {
+pub fn parse_watch_event(raw_payload: &Bytes) -> crate::result::Result<WatchEvent> {
     if !raw_payload.starts_with(b"event: message\ndata:") {
         return Err("invalid event".into());
     }
