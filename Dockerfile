@@ -16,4 +16,5 @@ RUN apt-get update && apt-get upgrade -y && apt-get clean && rm -rf /var/lib/apt
 WORKDIR /app
 COPY --from=builder /app/target/release/doppler-swarm /app/doppler-swarm
 ENV RUST_LOG=info
-CMD ["/app/doppler-swarm"]
+
+CMD ["/app/doppler-swarm", "/app/config.json"]
