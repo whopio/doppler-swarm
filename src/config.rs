@@ -19,5 +19,166 @@ pub fn read_config() -> crate::result::Result<Config> {
     let config = serde_json::from_str(&data)
         .map_err(|e| format!("Failed to parse config file {}: {}", &config_file, e))?;
 
+    validate_config(&config)?;
+
     Ok(config)
+}
+
+pub fn validate_config(config: &Config) -> crate::result::Result<()> {
+    let mut services_seen = vec![];
+
+    for watcher in &config.watchers {
+        if watcher.name.is_empty() {
+            return Err("Configuration error: watcher name cannot be empty".into());
+        }
+
+        if watcher.doppler_token.is_empty() {
+            return Err("Configuration error: doppler token cannot be empty".into());
+        }
+
+        if watcher.docker_services.is_empty() {
+            return Err("Configuration error: docker services cannot be empty".into());
+        }
+
+        for service in &watcher.docker_services {
+            if service.is_empty() {
+                return Err("Configuration error: docker service name cannot be empty".into());
+            }
+
+            if services_seen.contains(service) {
+                return Err(format!(
+                    "Configuration error: service {} is used in multiple watchers",
+                    service
+                )
+                .into());
+            } else {
+                services_seen.push(service.to_owned());
+            }
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_config_valid() {
+        let config = Config {
+            watchers: vec![
+                Watcher {
+                    name: "watcher1".to_string(),
+                    doppler_token: "token1".to_string(),
+                    docker_services: vec!["service1".to_string(), "service2".to_string()],
+                },
+                Watcher {
+                    name: "watcher2".to_string(),
+                    doppler_token: "token2".to_string(),
+                    docker_services: vec!["service3".to_string()],
+                },
+            ],
+        };
+
+        let result = validate_config(&config);
+        assert!(result.is_ok(), "Expected Ok result");
+    }
+
+    #[test]
+    fn test_validate_config_empty_watcher_name() {
+        let config = Config {
+            watchers: vec![Watcher {
+                name: "".to_string(),
+                doppler_token: "token1".to_string(),
+                docker_services: vec!["service1".to_string()],
+            }],
+        };
+
+        let result = validate_config(&config);
+        assert!(result.is_err(), "Expected Err result");
+        assert_eq!(
+            result.err().unwrap().to_string(),
+            "Configuration error: watcher name cannot be empty"
+        );
+    }
+
+    #[test]
+    fn test_validate_config_empty_doppler_token() {
+        let config = Config {
+            watchers: vec![Watcher {
+                name: "watcher1".to_string(),
+                doppler_token: "".to_string(),
+                docker_services: vec!["service1".to_string()],
+            }],
+        };
+
+        let result = validate_config(&config);
+        assert!(result.is_err(), "Expected Err result");
+        assert_eq!(
+            result.err().unwrap().to_string(),
+            "Configuration error: doppler token cannot be empty"
+        );
+    }
+
+    #[test]
+    fn test_validate_config_empty_docker_service_name() {
+        let config = Config {
+            watchers: vec![Watcher {
+                name: "watcher1".to_string(),
+                doppler_token: "token1".to_string(),
+                docker_services: vec!["good-service".to_string(), "".to_string()],
+            }],
+        };
+
+        let result = validate_config(&config);
+        assert!(result.is_err(), "Expected Err result");
+        assert_eq!(
+            result.err().unwrap().to_string(),
+            "Configuration error: docker service name cannot be empty"
+        );
+    }
+
+    #[test]
+    fn test_validate_config_empty_docker_services() {
+        let config = Config {
+            watchers: vec![Watcher {
+                name: "watcher1".to_string(),
+                doppler_token: "token1".to_string(),
+                docker_services: vec![],
+            }],
+        };
+
+        let result = validate_config(&config);
+        assert!(result.is_err(), "Expected Err result");
+        assert_eq!(
+            result.err().unwrap().to_string(),
+            "Configuration error: docker services cannot be empty"
+        );
+    }
+
+    #[test]
+    fn test_validate_config_duplicate_services() {
+        let config = Config {
+            watchers: vec![
+                Watcher {
+                    name: "watcher1".to_string(),
+                    doppler_token: "token1".to_string(),
+                    docker_services: vec!["service1".to_string(), "service2".to_string()],
+                },
+                Watcher {
+                    name: "watcher2".to_string(),
+                    doppler_token: "token2".to_string(),
+                    docker_services: vec!["service1".to_string()],
+                },
+            ],
+        };
+
+        let result = validate_config(&config);
+        assert!(result.is_err(), "Expected Err result");
+        assert_eq!(
+            result.err().unwrap().to_string(),
+            "Configuration error: service service1 is used in multiple watchers"
+        );
+    }
 }
