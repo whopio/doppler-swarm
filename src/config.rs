@@ -41,6 +41,10 @@ pub fn validate_config(config: &Config) -> crate::result::Result<()> {
         }
 
         for service in &watcher.docker_services {
+            if service.is_empty() {
+                return Err("Configuration error: docker service name cannot be empty".into());
+            }
+
             if services_seen.contains(service) {
                 services_seen_twice.push(service.to_owned());
             } else {
@@ -118,6 +122,24 @@ mod tests {
         assert_eq!(
             result.err().unwrap().to_string(),
             "Configuration error: doppler token cannot be empty"
+        );
+    }
+
+    #[test]
+    fn test_validate_config_empty_docker_service_name() {
+        let config = Config {
+            watchers: vec![Watcher {
+                name: "watcher1".to_string(),
+                doppler_token: "token1".to_string(),
+                docker_services: vec!["good-service".to_string(), "".to_string()],
+            }],
+        };
+
+        let result = validate_config(&config);
+        assert!(result.is_err(), "Expected Err result");
+        assert_eq!(
+            result.err().unwrap().to_string(),
+            "Configuration error: docker service name cannot be empty"
         );
     }
 
