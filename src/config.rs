@@ -2,6 +2,7 @@ use crate::error::Error;
 
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct Watcher {
+    pub name: String,
     pub doppler_token: String,
     pub docker_services: Vec<String>,
 }

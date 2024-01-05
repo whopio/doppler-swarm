@@ -9,8 +9,6 @@ pub async fn get_current_env_vars(service_name: &str) -> crate::result::Result<V
         .await
         .map_err(|e| format!("Failed to inspect service {}: {}", service_name, e))?;
 
-    dbg!(&service);
-
     let mut env_vars = service
         .spec
         .and_then(|service_spec| service_spec.task_template)
