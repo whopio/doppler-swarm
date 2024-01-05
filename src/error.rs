@@ -24,21 +24,3 @@ impl From<&str> for Error {
         Self(msg.to_owned())
     }
 }
-
-impl From<serde_json::Error> for Error {
-    fn from(e: serde_json::Error) -> Self {
-        format!("JSON Error: {e}").into()
-    }
-}
-
-impl From<std::io::Error> for Error {
-    fn from(e: std::io::Error) -> Self {
-        format!("IO Error: {e}").into()
-    }
-}
-
-impl From<bollard::errors::Error> for Error {
-    fn from(e: bollard::errors::Error) -> Self {
-        format!("Docker Error: {e}").into()
-    }
-}

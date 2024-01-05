@@ -33,20 +33,6 @@ impl Worker {
     }
 
     pub async fn run(&self) {
-        log::info!("[{}] Fetching secrets...", &self.watcher.name);
-
-        for _ in 1..5 {
-            match self.sync_secrets().await {
-                Ok(_) => {
-                    break;
-                }
-                Err(e) => {
-                    log::error!("[{}] Failed to sync secrets: {}", &self.watcher.name, e);
-                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                }
-            }
-        }
-
         loop {
             if let Err(e) = self.watch_for_updates().await {
                 log::error!(

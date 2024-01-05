@@ -9,8 +9,12 @@ pub async fn fetch_secrets(
         .await
         .map_err(|e| format!("{e}"))?;
 
-    if response.status() != 200 {
-        return Err(format!("HTTP Status {}", response.status()).into());
+    match response.status() {
+        reqwest::StatusCode::OK => {}
+        reqwest::StatusCode::UNAUTHORIZED => {
+            return Err("INVALID DOPPLER TOKEN".into());
+        }
+        _ => return Err(format!("HTTP Status {}", response.status()).into()),
     }
 
     let body = response
