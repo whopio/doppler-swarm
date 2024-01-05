@@ -42,15 +42,17 @@ impl Worker {
     pub async fn sync_secrets(&self) {
         let doppler_secrets = fetch_secrets(&self.http, &self.watcher.doppler_token)
             .await
-            .unwrap();
+            .expect("Cannot fetch secrets from Doppler");
 
         for service in &self.watcher.docker_services {
-            let docker_secrets = crate::docker::get_current_env_vars(service).await.unwrap();
+            let docker_secrets = crate::docker::get_current_env_vars(service)
+                .await
+                .expect("Cannot get secrets from Docker service");
 
             if should_update_docker_service(&doppler_secrets, &docker_secrets) {
                 crate::docker::update_service(service, doppler_secrets.clone())
                     .await
-                    .unwrap();
+                    .expect("Cannot update docker service");
 
                 log::info!("Updated {}", service);
             } else {
