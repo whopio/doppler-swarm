@@ -8,7 +8,7 @@
         {
             "name": "staging apps",
             "doppler_token": "my-secret-doppler-token",
-            "docker_services": ["staging-backend", "staging-sidekiq", "one-more-staging-docker-service"]
+            "docker_services": ["staging-*", "preview-*"]
         }
     ]
 }
