@@ -131,7 +131,7 @@ pub async fn match_services(
             let mut count = 0;
             for docker_service_name in &docker_service_names {
                 if !docker_service_name.is_empty()
-                    && is_match(&docker_service_name, service_name_pattern)
+                    && is_match(docker_service_name, service_name_pattern)
                 {
                     count += 1;
                     if services.contains(docker_service_name) {
@@ -153,7 +153,7 @@ pub async fn match_services(
                 }
             }
         } else {
-            if !docker_service_names.contains(&service_name_pattern) {
+            if !docker_service_names.contains(service_name_pattern) {
                 return Err(format!(
                     "Configuration error: service {} does not exist",
                     service_name_pattern
