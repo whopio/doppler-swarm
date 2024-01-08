@@ -7,7 +7,7 @@ description = "Watch for changes in Doppler and update your Docker Swarm service
 license = "MIT"
 homepage = "https://github.com/whopio/doppler-swarm/"
 categories = ["command-line-utilities"]
-keywords = ["doppler", "docker swarm", "secrets", "configuration"]
+keywords = ["doppler", "docker", "swarm", "secrets", "configuration"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
