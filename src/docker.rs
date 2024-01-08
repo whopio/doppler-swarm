@@ -153,6 +153,14 @@ pub async fn match_services(
                 }
             }
         } else {
+            if !docker_service_names.contains(&service_name_pattern) {
+                return Err(format!(
+                    "Configuration error: service {} does not exist",
+                    service_name_pattern
+                )
+                .into());
+            }
+
             if services.contains(service_name_pattern) {
                 return Err(
                     "Configuration error: service name cannot be used multiple times".into(),
@@ -254,6 +262,23 @@ mod tests {
         assert_eq!(
             result,
             Ok(vec!["service1".to_owned(), "service2".to_owned()])
+        );
+    }
+
+    #[tokio::test]
+    async fn test_match_services_unknown_service() {
+        let watcher = Watcher {
+            name: "My watcher".to_owned(),
+            docker_services: vec!["service1".to_owned()],
+            doppler_token: "secret".to_owned(),
+        };
+
+        let docker_service_names = vec!["service2".to_owned(), "another_service".to_owned()];
+
+        let result = match_services(&watcher, docker_service_names).await;
+        assert_eq!(
+            result,
+            Err("Configuration error: service service1 does not exist".into())
         );
     }
 }
