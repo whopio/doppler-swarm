@@ -119,6 +119,13 @@ pub async fn list_services(watcher: &Watcher) -> crate::result::Result<Vec<Strin
         })
         .collect::<Vec<_>>();
 
+    log::debug!(
+        "[{}] Found {} docker services: {:?}",
+        &watcher.name,
+        docker_service_names.len(),
+        &docker_service_names
+    );
+
     match_services(watcher, docker_service_names).await
 }
 
@@ -145,14 +152,14 @@ pub async fn match_services(
                         services.push(docker_service_name.to_owned());
                     }
                 }
+            }
 
-                if count == 0 {
-                    return Err(format!(
-                        "Configuration error: no services match pattern {}",
-                        service_name_pattern
-                    )
-                    .into());
-                }
+            if count == 0 {
+                return Err(format!(
+                    "Configuration error: no services match pattern {}",
+                    service_name_pattern
+                )
+                .into());
             }
         } else {
             if !docker_service_names.contains(service_name_pattern) {
@@ -219,6 +226,7 @@ mod tests {
         assert!(is_match("pattern_start", "*ttern_start"));
         assert!(is_match("pattern_start", "*pattern_start"));
         assert!(is_match("pattern_start", "*a*t?r*_*t?r?*"));
+        assert!(is_match("main_app", "*_app"));
     }
 
     #[test]
