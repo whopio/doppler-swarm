@@ -281,4 +281,21 @@ mod tests {
             Err("Configuration error: service service1 does not exist".into())
         );
     }
+
+    #[tokio::test]
+    async fn test_match_services_unknown_service_by_pattern() {
+        let watcher = Watcher {
+            name: "My watcher".to_owned(),
+            docker_services: vec!["service*".to_owned()],
+            doppler_token: "secret".to_owned(),
+        };
+
+        let docker_service_names = vec!["another_service".to_owned()];
+
+        let result = match_services(&watcher, docker_service_names).await;
+        assert_eq!(
+            result,
+            Err("Configuration error: no services match pattern service*".into())
+        );
+    }
 }
