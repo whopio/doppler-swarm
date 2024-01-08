@@ -72,32 +72,34 @@ pub fn is_pattern(pattern: &str) -> bool {
 }
 
 // Matches patters with * and ? wildcards.
-pub fn is_match(string: &str, pattern: &str) -> bool {
-    let m = string.len();
+pub fn is_match(text: &str, pattern: &str) -> bool {
+    let m = text.len();
     let n = pattern.len();
 
     let mut dp = vec![vec![false; n + 1]; m + 1];
 
-    let sb = string.as_bytes();
-    let pb = pattern.as_bytes();
+    let text_bytes = text.as_bytes();
+    let pattern_bytes = pattern.as_bytes();
 
-    dp[m][n] = true;
+    dp[0][0] = true;
 
-    for i in (0..=m).rev() {
-        for j in (0..n).rev() {
-            if pb[j] == b'*' {
-                dp[i][j] = dp[i][j + 1];
+    for j in 1..=n {
+        if pattern_bytes[j - 1] == b'*' {
+            dp[0][j] = dp[0][j - 1];
+        }
+    }
 
-                if i < m {
-                    dp[i][j] = dp[i][j] || dp[i + 1][j] || dp[i + 1][j + 1];
-                }
-            } else {
-                dp[i][j] = i < m && (sb[i] == pb[j] || pb[j] == b'?') && dp[i + 1][j + 1];
+    for i in 1..=m {
+        for j in 1..=n {
+            if pattern_bytes[j - 1] == b'*' {
+                dp[i][j] = dp[i][j - 1] || dp[i - 1][j];
+            } else if pattern_bytes[j - 1] == b'?' || text_bytes[i - 1] == pattern_bytes[j - 1] {
+                dp[i][j] = dp[i - 1][j - 1];
             }
         }
     }
 
-    dp[0][0]
+    dp[m][n]
 }
 
 pub async fn list_services(watcher: &Watcher) -> crate::result::Result<Vec<String>> {
@@ -189,30 +191,34 @@ mod tests {
     #[test]
     fn test_is_match_exact_match() {
         assert!(is_match("exact_match", "exact_match"));
+        assert!(!is_match("exact_match", "exact_matchz"));
     }
 
     #[test]
     fn test_is_match_question_start() {
         assert!(is_match("pattern_start", "??ttern_start"));
-        assert!(!is_match("pattern_start", "?pattern_start"));
+        assert!(is_match("pattern_start", "?attern_start"));
     }
 
     #[test]
     fn test_is_match_question_middle() {
         assert!(is_match("pattern_middle", "pat?ern_middle"));
-        assert!(!is_match("pattern_middle", "pat?tern_middle"));
+        assert!(is_match("pattern_middle", "pat?ern_?iddle"));
+        assert!(is_match("pattern_middle", "pat?e??_?iddle"));
+        assert!(is_match("pattern_middle", "pat??????iddle"));
     }
 
     #[test]
     fn test_is_match_question_end() {
         assert!(is_match("pattern_end", "pattern_en?"));
-        assert!(!is_match("pattern_end", "pattern_en?d"));
+        assert!(is_match("pattern_end", "pattern_e??"));
     }
 
     #[test]
     fn test_is_match_star_start() {
         assert!(is_match("pattern_start", "*ttern_start"));
         assert!(is_match("pattern_start", "*pattern_start"));
+        assert!(is_match("pattern_start", "*a*t?r*_*t?r?*"));
     }
 
     #[test]
@@ -296,6 +302,23 @@ mod tests {
         assert_eq!(
             result,
             Err("Configuration error: no services match pattern service*".into())
+        );
+    }
+
+    #[tokio::test]
+    async fn test_match_services_unknown_match() {
+        let watcher = Watcher {
+            name: "My watcher".to_owned(),
+            docker_services: vec!["my*".to_owned()],
+            doppler_token: "secret".to_owned(),
+        };
+
+        let docker_service_names = vec!["myservice1".to_owned(), "myservice2".to_owned()];
+
+        let result = match_services(&watcher, docker_service_names).await;
+        assert_eq!(
+            result,
+            Ok(vec!["myservice1".to_owned(), "myservice2".to_owned()])
         );
     }
 }
