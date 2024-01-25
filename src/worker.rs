@@ -74,9 +74,13 @@ impl Worker {
             if should_update_docker_service(&doppler_secrets, &docker_secrets) {
                 log::info!("[{}] [{}] Updating service...", &self.watcher.name, service);
 
-                crate::docker::update_service(&service, doppler_secrets.clone())
-                    .await
-                    .map_err(|e| format!("[{}] Failed to update docker service: {}", service, e))?;
+                crate::docker::update_service(
+                    &service,
+                    docker_secrets.clone(),
+                    doppler_secrets.clone(),
+                )
+                .await
+                .map_err(|e| format!("[{}] Failed to update docker service: {}", service, e))?;
 
                 log::info!("[{}] [{}] Service updated", &self.watcher.name, service);
             } else {

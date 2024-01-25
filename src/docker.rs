@@ -1,70 +1,174 @@
 use crate::config::Watcher;
-use bollard::service::{InspectServiceOptions, UpdateServiceOptions};
 
 pub async fn get_current_env_vars(service_name: &str) -> crate::result::Result<Vec<String>> {
-    let client = bollard::Docker::connect_with_local_defaults()
-        .map_err(|e| format!("Failed to connect to Docker: {}", e))?;
+    let mut child = tokio::process::Command::new("docker")
+        .arg("service")
+        .arg("inspect")
+        .arg("--format")
+        .arg("{{json .Spec.TaskTemplate.ContainerSpec.Env}}")
+        .arg(service_name)
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to spawn docker service inspect command: {e}"))?;
 
-    let service = client
-        .inspect_service(service_name, None)
+    log::info!("Running \"docker service inspect --format {{json .Spec.TaskTemplate.ContainerSpec.Env}} {}\"", service_name);
+
+    let stdout = child.stdout.take().unwrap();
+
+    let mut buf = Vec::new();
+
+    tokio::io::copy(&mut tokio::io::BufReader::new(stdout), &mut buf)
         .await
-        .map_err(|e| format!("Failed to inspect service {}: {}", service_name, e))?;
+        .map_err(|_e| {
+            format!(
+                "Failed to read docker service inspect output: {}",
+                String::from_utf8_lossy(&buf)
+            )
+        })?;
 
-    let mut env_vars = service
-        .spec
-        .and_then(|service_spec| service_spec.task_template)
-        .and_then(|task_spec| task_spec.container_spec)
-        .and_then(|container_spec| container_spec.env)
-        .unwrap_or_else(Vec::new);
+    let mut env_vars: Vec<String> = serde_json::from_slice(&buf).map_err(|_e| {
+        format!(
+            "Failed to parse docker service inspect output: {}",
+            String::from_utf8_lossy(&buf)
+        )
+    })?;
 
     env_vars.sort();
 
     Ok(env_vars)
 }
 
-pub async fn update_service(
-    service_name: &str,
-    env_vars: Vec<String>,
-) -> crate::result::Result<()> {
-    let docker = bollard::Docker::connect_with_local_defaults()
-        .map_err(|e| format!("Failed to connect to Docker: {}", e))?;
+fn parse_env_pair(env_var: &str) -> crate::result::Result<(String, String)> {
+    match env_var.split_once('=') {
+        Some((name, value)) => {
+            if name.is_empty() {
+                return Err(format!("Cannot parse env var: {}", env_var).into());
+            }
 
-    let current_service = docker
-        .inspect_service(service_name, None::<InspectServiceOptions>)
-        .await
-        .map_err(|e| format!("Failed to inspect service {}: {}", service_name, e))?;
+            if value.is_empty() {
+                return Err(format!("Cannot parse env var: {}", env_var).into());
+            }
 
-    let current_version = current_service
-        .version
-        .ok_or_else(|| format!("[{}] Cannot get docker service version", service_name))?
-        .index
-        .ok_or_else(|| format!("[{}] Cannot get docker service version index", service_name))?;
+            Ok((name.to_owned(), value.to_owned()))
+        }
+        None => Err(format!("Cannot parse env var: {env_var}").into()),
+    }
+}
 
-    let mut current_spec = current_service
-        .spec
-        .ok_or_else(|| format!("[{}] Cannot get docker service spec", service_name))?;
+fn parse_env_pairs(env_vars: Vec<String>) -> crate::result::Result<Vec<(String, String)>> {
+    let mut parsed_env_vars = vec![];
 
-    // Update the existing ServiceSpec with new environment variables
-    current_spec.name = Some(service_name.to_string());
+    for env_var in env_vars {
+        parsed_env_vars.push(parse_env_pair(&env_var)?);
+    }
 
-    dbg!(&current_spec);
+    Ok(parsed_env_vars)
+}
 
-    if let Some(task_template) = &mut current_spec.task_template {
-        if let Some(container_spec) = &mut task_template.container_spec {
-            container_spec.env = Some(env_vars);
+pub fn list_env_vars_to_delete(
+    old_env_vars: Vec<String>,
+    new_env_vars: Vec<String>,
+) -> crate::result::Result<Vec<String>> {
+    let old_env_vars = parse_env_pairs(old_env_vars)?;
+    let new_env_vars = parse_env_pairs(new_env_vars)?;
 
-            let options = UpdateServiceOptions {
-                version: current_version,
-                ..Default::default()
-            };
+    let mut env_vars_to_delete = vec![];
 
-            // Update the service with the modified spec
-            docker
-                .update_service(service_name, current_spec, options, None)
-                .await
-                .map_err(|e| format!("[{}] Failed to update service: {}", service_name, e))?;
+    for old_env_var in old_env_vars {
+        let old_env_var_name = old_env_var.0;
+
+        // check that new env vars contain the old env var name
+        if !new_env_vars
+            .iter()
+            .any(|new_env_var| new_env_var.0 == old_env_var_name)
+        {
+            env_vars_to_delete.push(old_env_var_name);
         }
     }
+
+    Ok(env_vars_to_delete)
+}
+
+pub fn list_env_pairs_to_update(
+    old_env_vars: Vec<String>,
+    new_env_vars: Vec<String>,
+) -> crate::result::Result<Vec<String>> {
+    let old_env_vars = parse_env_pairs(old_env_vars)?;
+    let new_env_vars = parse_env_pairs(new_env_vars)?;
+
+    let mut env_vars_to_update = vec![];
+
+    for new_env_var in new_env_vars {
+        let new_env_var_name = new_env_var.0;
+        let new_env_var_value = new_env_var.1;
+
+        // check that old env vars contain the new env var name
+        if let Some(old_env_var) = old_env_vars
+            .iter()
+            .find(|old_env_var| old_env_var.0 == new_env_var_name)
+        {
+            let old_env_var_value = &old_env_var.1;
+
+            if old_env_var_value != &new_env_var_value {
+                env_vars_to_update.push(format!("{}={}", new_env_var_name, new_env_var_value));
+            }
+        }
+    }
+
+    Ok(env_vars_to_update)
+}
+
+pub async fn update_service(
+    service_name: &str,
+    old_env_vars: Vec<String>,
+    new_env_vars: Vec<String>,
+) -> crate::result::Result<()> {
+    let env_vars_to_delete = list_env_vars_to_delete(old_env_vars.clone(), new_env_vars.clone())?;
+
+    let env_vars_to_update = list_env_pairs_to_update(old_env_vars, new_env_vars)?;
+
+    let mut command = tokio::process::Command::new("docker");
+    command.arg("service");
+    command.arg("update");
+
+    let mut args_info = String::new();
+
+    for env_var in env_vars_to_delete {
+        command.arg("--env-rm").arg(&env_var);
+        args_info.push_str(&format!("--env-rm {} ", env_var));
+    }
+
+    for env_var in env_vars_to_update {
+        command.arg("--env-add").arg(&env_var);
+        args_info.push_str(&format!("--env-add {} ", env_var));
+    }
+
+    args_info.pop();
+
+    let mut child = command
+        .arg(service_name)
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to spawn docker service inspect command: {e}"))?;
+
+    log::info!(
+        "Running \"docker service update {} {}\"",
+        args_info,
+        service_name
+    );
+
+    let stdout = child.stdout.take().unwrap();
+
+    let mut buf = Vec::new();
+
+    tokio::io::copy(&mut tokio::io::BufReader::new(stdout), &mut buf)
+        .await
+        .map_err(|_e| {
+            format!(
+                "Failed to read docker service inspect output: {}",
+                String::from_utf8_lossy(&buf)
+            )
+        })?;
 
     Ok(())
 }
@@ -105,23 +209,37 @@ pub fn is_match(text: &str, pattern: &str) -> bool {
 }
 
 pub async fn list_services(watcher: &Watcher) -> crate::result::Result<Vec<String>> {
-    let docker = bollard::Docker::connect_with_local_defaults()
-        .map_err(|e| format!("Failed to connect to Docker: {}", e))?;
+    let mut child = tokio::process::Command::new("docker")
+        .arg("service")
+        .arg("ls")
+        .arg("--format")
+        .arg("{{.Name}}")
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to spawn docker service ls command: {e}"))?;
 
-    let docker_services: Vec<_> = docker
-        .list_services(None::<bollard::service::ListServicesOptions<String>>)
+    log::info!("Running \"docker service ls --format {{.Name}}\"");
+
+    let stdout = child.stdout.take().unwrap();
+
+    let mut buf = Vec::new();
+
+    tokio::io::copy(&mut tokio::io::BufReader::new(stdout), &mut buf)
         .await
-        .map_err(|e| format!("Failed to list services: {}", e))?;
+        .map_err(|_e| {
+            format!(
+                "Failed to read docker service ls output: {}",
+                String::from_utf8_lossy(&buf)
+            )
+        })?;
 
-    let docker_service_names = docker_services
-        .iter()
-        .filter_map(|service| {
-            let service_name = service.spec.as_ref()?.name.clone()?;
-            Some(service_name)
-        })
-        .collect::<Vec<_>>();
+    let docker_service_names: Vec<String> = String::from_utf8_lossy(&buf)
+        .split('\n')
+        .filter(|service_name| !service_name.is_empty())
+        .map(|service_name| service_name.to_owned())
+        .collect();
 
-    log::debug!(
+    log::info!(
         "[{}] Found {} docker services: {:?}",
         &watcher.name,
         docker_service_names.len(),
