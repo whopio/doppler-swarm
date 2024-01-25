@@ -1,6 +1,6 @@
 [package]
 name = "doppler-swarm"
-version = "0.2.3"
+version = "0.2.4"
 edition = "2021"
 authors = ["Pavel Lazureykis <pavel@lazureykis.dev>"]
 description = "Watch for changes in Doppler and update your Docker Swarm services."
@@ -11,9 +11,12 @@ keywords = ["doppler", "docker", "swarm", "secrets", "configuration"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bollard = { version = "0.15.0" }
+# bollard = { version = "0.15.0" }
+# Revert to original version after they'll rename HealthCheck to Healthcheck:
+# https://github.com/fussybeaver/bollard/blob/ea0b79f5fb72c280e0b6e120b232c9fe8f788286/codegen/swagger/src/models.rs#L6986
+bollard = { git = "https://github.com/lazureykis/bollard.git" }
 bytes = "1.5.0"
-env_logger = "0.10.1"
+env_logger = "0.11.0"
 futures = "0.3.30"
 log = "0.4.20"
 reqwest = { version = "0.11.23", default-features = false, features = ["stream", "rustls-tls", "rustls-tls-webpki-roots"] }

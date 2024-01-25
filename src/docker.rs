@@ -47,6 +47,8 @@ pub async fn update_service(
     // Update the existing ServiceSpec with new environment variables
     current_spec.name = Some(service_name.to_string());
 
+    dbg!(&current_spec);
+
     if let Some(task_template) = &mut current_spec.task_template {
         if let Some(container_spec) = &mut task_template.container_spec {
             container_spec.env = Some(env_vars);
