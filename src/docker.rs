@@ -112,6 +112,8 @@ pub fn list_env_pairs_to_update(
             if old_env_var_value != &new_env_var_value {
                 env_vars_to_update.push(format!("{}={}", new_env_var_name, new_env_var_value));
             }
+        } else {
+            env_vars_to_update.push(format!("{}={}", new_env_var_name, new_env_var_value));
         }
     }
 
@@ -310,6 +312,50 @@ pub async fn match_services(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_list_env_pairs_to_update_no_changes() {
+        let old_env_vars = vec!["VAR1=old_value1".to_string(), "VAR2=old_value2".to_string()];
+        let new_env_vars = vec!["VAR1=old_value1".to_string(), "VAR2=old_value2".to_string()];
+
+        let result = list_env_pairs_to_update(old_env_vars, new_env_vars).unwrap();
+        assert!(result.is_empty()); // No changes, so the result should be an empty vector
+    }
+
+    #[test]
+    fn test_list_env_pairs_to_update_with_changes() {
+        let old_env_vars = vec!["VAR1=old_value1".to_string(), "VAR2=old_value2".to_string()];
+        let new_env_vars = vec!["VAR1=new_value1".to_string(), "VAR2=old_value2".to_string()];
+
+        let result = list_env_pairs_to_update(old_env_vars, new_env_vars).unwrap();
+        assert_eq!(result, vec!["VAR1=new_value1".to_string()]); // VAR1 has changed, so it should be in the result
+    }
+
+    #[test]
+    fn test_list_env_pairs_to_update_missing_old_vars() {
+        let old_env_vars = vec!["VAR1=old_value1".to_string()];
+        let new_env_vars = vec!["VAR1=new_value1".to_string(), "VAR2=new_value2".to_string()];
+
+        let result = list_env_pairs_to_update(old_env_vars, new_env_vars).unwrap();
+        assert_eq!(
+            result,
+            vec!["VAR1=new_value1".to_string(), "VAR2=new_value2".to_string()]
+        );
+        // VAR1 has changed, VAR2 is a new variable, both should be in the result
+    }
+
+    #[test]
+    fn test_list_env_pairs_to_update_new_vars_not_in_old_vars() {
+        let old_env_vars = vec!["VAR1=old_value1".to_string()];
+        let new_env_vars = vec!["VAR2=new_value2".to_string(), "VAR3=new_value3".to_string()];
+
+        let result = list_env_pairs_to_update(old_env_vars, new_env_vars).unwrap();
+        assert_eq!(
+            result,
+            vec!["VAR2=new_value2".to_string(), "VAR3=new_value3".to_string()]
+        );
+        // VAR2 and VAR3 are new variables, both should be in the result
+    }
 
     #[test]
     fn test_is_pattern() {
