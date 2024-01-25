@@ -124,8 +124,12 @@ pub async fn update_service(
     new_env_vars: Vec<String>,
 ) -> crate::result::Result<()> {
     let env_vars_to_delete = list_env_vars_to_delete(old_env_vars.clone(), new_env_vars.clone())?;
-
     let env_vars_to_update = list_env_pairs_to_update(old_env_vars, new_env_vars)?;
+
+    if env_vars_to_delete.is_empty() && env_vars_to_update.is_empty() {
+        log::info!("No changes to apply to {}", service_name);
+        return Ok(());
+    }
 
     let mut command = tokio::process::Command::new("docker");
     command.arg("service");
