@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{
     config,
     secrets::fetch_secrets,
@@ -16,18 +18,10 @@ pub struct Worker {
 }
 
 pub fn should_update_docker_service(
-    doppler_secrets: &Vec<String>,
-    docker_secrets: &Vec<String>,
+    doppler_secrets: &HashMap<String, String>,
+    docker_secrets: &HashMap<String, String>,
 ) -> bool {
-    if doppler_secrets.len() != docker_secrets.len() {
-        return true;
-    }
-
-    if doppler_secrets != docker_secrets {
-        return true;
-    }
-
-    false
+    doppler_secrets != docker_secrets
 }
 
 impl Worker {

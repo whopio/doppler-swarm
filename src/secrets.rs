@@ -1,9 +1,11 @@
+use std::collections::HashMap;
+
 pub async fn fetch_secrets(
     http: &reqwest::Client,
     doppler_token: &str,
-) -> crate::result::Result<Vec<String>> {
+) -> crate::result::Result<HashMap<String, String>> {
     let response = http
-        .get("https://api.doppler.com/v3/configs/config/secrets/download?format=docker")
+        .get("https://api.doppler.com/v3/configs/config/secrets/download?format=json")
         .bearer_auth(doppler_token)
         .send()
         .await
@@ -17,17 +19,10 @@ pub async fn fetch_secrets(
         _ => return Err(format!("HTTP Status {}", response.status()).into()),
     }
 
-    let body = response
-        .text()
+    let secrets: HashMap<String, String> = response
+        .json()
         .await
         .map_err(|e| format!("Cannot read response body: {}", e))?;
-
-    let mut secrets: Vec<String> = body
-        .lines()
-        .map(|line| line.to_owned().replace("\\n", "\n"))
-        .collect();
-
-    secrets.sort();
 
     Ok(secrets)
 }

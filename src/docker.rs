@@ -1,6 +1,10 @@
+use std::collections::HashMap;
+
 use crate::config::Watcher;
 
-pub async fn get_current_env_vars(service_name: &str) -> crate::result::Result<Vec<String>> {
+pub async fn get_current_env_vars(
+    service_name: &str,
+) -> crate::result::Result<HashMap<String, String>> {
     let mut child = tokio::process::Command::new("docker")
         .arg("service")
         .arg("inspect")
@@ -26,14 +30,19 @@ pub async fn get_current_env_vars(service_name: &str) -> crate::result::Result<V
             )
         })?;
 
-    let mut env_vars: Vec<String> = serde_json::from_slice(&buf).map_err(|_e| {
+    let env_var_pairs: Vec<String> = serde_json::from_slice(&buf).map_err(|_e| {
         format!(
             "Failed to parse docker service inspect output: {}",
             String::from_utf8_lossy(&buf)
         )
     })?;
 
-    env_vars.sort();
+    let mut env_vars = HashMap::new();
+
+    for pair in env_var_pairs {
+        let (name, value) = parse_env_pair(&pair)?;
+        env_vars.insert(name, value);
+    }
 
     Ok(env_vars)
 }
@@ -55,65 +64,39 @@ fn parse_env_pair(env_var: &str) -> crate::result::Result<(String, String)> {
     }
 }
 
-fn parse_env_pairs(env_vars: Vec<String>) -> crate::result::Result<Vec<(String, String)>> {
-    let mut parsed_env_vars = vec![];
-
-    for env_var in env_vars {
-        parsed_env_vars.push(parse_env_pair(&env_var)?);
-    }
-
-    Ok(parsed_env_vars)
-}
-
 pub fn list_env_vars_to_delete(
-    old_env_vars: Vec<String>,
-    new_env_vars: Vec<String>,
+    old_env_vars: HashMap<String, String>,
+    new_env_vars: HashMap<String, String>,
 ) -> crate::result::Result<Vec<String>> {
-    let old_env_vars = parse_env_pairs(old_env_vars)?;
-    let new_env_vars = parse_env_pairs(new_env_vars)?;
-
     let mut env_vars_to_delete = vec![];
 
-    for old_env_var in old_env_vars {
-        let old_env_var_name = old_env_var.0;
-
-        // check that new env vars contain the old env var name
-        if !new_env_vars
-            .iter()
-            .any(|new_env_var| new_env_var.0 == old_env_var_name)
-        {
-            env_vars_to_delete.push(old_env_var_name);
+    new_env_vars.keys().for_each(|new_env_var_name| {
+        // check that old env vars contain the new env var name
+        if !old_env_vars.contains_key(new_env_var_name) {
+            env_vars_to_delete.push(new_env_var_name.to_owned());
         }
-    }
+    });
 
     Ok(env_vars_to_delete)
 }
 
 pub fn list_env_pairs_to_update(
-    old_env_vars: Vec<String>,
-    new_env_vars: Vec<String>,
-) -> crate::result::Result<Vec<String>> {
-    let old_env_vars = parse_env_pairs(old_env_vars)?;
-    let new_env_vars = parse_env_pairs(new_env_vars)?;
+    old_env_vars: HashMap<String, String>,
+    new_env_vars: HashMap<String, String>,
+) -> crate::result::Result<HashMap<String, String>> {
+    let mut env_vars_to_update = HashMap::new();
 
-    let mut env_vars_to_update = vec![];
-
-    for new_env_var in new_env_vars {
-        let new_env_var_name = new_env_var.0;
-        let new_env_var_value = new_env_var.1;
-
+    for (new_env_var_name, new_env_var_value) in new_env_vars {
         // check that old env vars contain the new env var name
-        if let Some(old_env_var) = old_env_vars
-            .iter()
-            .find(|old_env_var| old_env_var.0 == new_env_var_name)
-        {
-            let old_env_var_value = &old_env_var.1;
-
-            if old_env_var_value != &new_env_var_value {
-                env_vars_to_update.push(format!("{}={}", new_env_var_name, new_env_var_value));
+        match old_env_vars.get(&new_env_var_name) {
+            None => {
+                env_vars_to_update.insert(new_env_var_name, new_env_var_value);
             }
-        } else {
-            env_vars_to_update.push(format!("{}={}", new_env_var_name, new_env_var_value));
+            Some(old_env_var_value) => {
+                if old_env_var_value != &new_env_var_value {
+                    env_vars_to_update.insert(new_env_var_name, new_env_var_value);
+                }
+            }
         }
     }
 
@@ -122,8 +105,8 @@ pub fn list_env_pairs_to_update(
 
 pub async fn update_service(
     service_name: &str,
-    old_env_vars: Vec<String>,
-    new_env_vars: Vec<String>,
+    old_env_vars: HashMap<String, String>,
+    new_env_vars: HashMap<String, String>,
 ) -> crate::result::Result<()> {
     // dbg!(service_name, &old_env_vars, &new_env_vars);
 
@@ -146,11 +129,12 @@ pub async fn update_service(
         args_info.push_str(&format!("--env-rm {} ", env_var));
     }
 
-    for env_var in env_vars_to_update {
-        command.arg("--env-add").arg(&env_var);
+    for (env_var_name, env_var_value) in env_vars_to_update {
+        let arg = format!("{}={}", env_var_name, env_var_value);
+        command.arg("--env-add").arg(&arg);
         // dbg!(&env_var);
         // println!("env_var: {}", &env_var);
-        args_info.push_str(&format!("--env-add \"{}\" ", env_var));
+        args_info.push_str(&format!("--env-add \"{}\" ", arg));
     }
 
     args_info.pop();
@@ -319,46 +303,66 @@ mod tests {
 
     #[test]
     fn test_list_env_pairs_to_update_no_changes() {
-        let old_env_vars = vec!["VAR1=old_value1".to_string(), "VAR2=old_value2".to_string()];
-        let new_env_vars = vec!["VAR1=old_value1".to_string(), "VAR2=old_value2".to_string()];
+        let mut old_env_vars = HashMap::new();
+        old_env_vars.insert("VAR1".to_string(), "old_value1".to_string());
+        old_env_vars.insert("VAR2".to_string(), "old_value2".to_string());
+
+        let mut new_env_vars = HashMap::new();
+        new_env_vars.insert("VAR1".to_string(), "old_value1".to_string());
+        new_env_vars.insert("VAR2".to_string(), "old_value2".to_string());
 
         let result = list_env_pairs_to_update(old_env_vars, new_env_vars).unwrap();
-        assert!(result.is_empty()); // No changes, so the result should be an empty vector
+        assert!(result.is_empty()); // No changes, so the result should be an empty HashMap
     }
 
     #[test]
     fn test_list_env_pairs_to_update_with_changes() {
-        let old_env_vars = vec!["VAR1=old_value1".to_string(), "VAR2=old_value2".to_string()];
-        let new_env_vars = vec!["VAR1=new_value1".to_string(), "VAR2=old_value2".to_string()];
+        let mut old_env_vars = HashMap::new();
+        old_env_vars.insert("VAR1".to_string(), "old_value1".to_string());
+        old_env_vars.insert("VAR2".to_string(), "old_value2".to_string());
+
+        let mut new_env_vars = HashMap::new();
+        new_env_vars.insert("VAR1".to_string(), "new_value1".to_string());
+        new_env_vars.insert("VAR2".to_string(), "old_value2".to_string());
 
         let result = list_env_pairs_to_update(old_env_vars, new_env_vars).unwrap();
-        assert_eq!(result, vec!["VAR1=new_value1".to_string()]); // VAR1 has changed, so it should be in the result
+        let mut expected_result = HashMap::new();
+        expected_result.insert("VAR1".to_string(), "new_value1".to_string());
+        assert_eq!(result, expected_result); // VAR1 has changed, so it should be in the result
     }
 
     #[test]
     fn test_list_env_pairs_to_update_missing_old_vars() {
-        let old_env_vars = vec!["VAR1=old_value1".to_string()];
-        let new_env_vars = vec!["VAR1=new_value1".to_string(), "VAR2=new_value2".to_string()];
+        let mut old_env_vars = HashMap::new();
+        old_env_vars.insert("VAR1".to_string(), "old_value1".to_string());
+
+        let mut new_env_vars = HashMap::new();
+        new_env_vars.insert("VAR1".to_string(), "new_value1".to_string());
+        new_env_vars.insert("VAR2".to_string(), "new_value2".to_string());
 
         let result = list_env_pairs_to_update(old_env_vars, new_env_vars).unwrap();
-        assert_eq!(
-            result,
-            vec!["VAR1=new_value1".to_string(), "VAR2=new_value2".to_string()]
-        );
+        let mut expected_result = HashMap::new();
+        expected_result.insert("VAR1".to_string(), "new_value1".to_string());
+        expected_result.insert("VAR2".to_string(), "new_value2".to_string());
         // VAR1 has changed, VAR2 is a new variable, both should be in the result
+        assert_eq!(result, expected_result);
     }
 
     #[test]
     fn test_list_env_pairs_to_update_new_vars_not_in_old_vars() {
-        let old_env_vars = vec!["VAR1=old_value1".to_string()];
-        let new_env_vars = vec!["VAR2=new_value2".to_string(), "VAR3=new_value3".to_string()];
+        let mut old_env_vars = HashMap::new();
+        old_env_vars.insert("VAR1".to_string(), "old_value1".to_string());
+
+        let mut new_env_vars = HashMap::new();
+        new_env_vars.insert("VAR2".to_string(), "new_value2".to_string());
+        new_env_vars.insert("VAR3".to_string(), "new_value3".to_string());
 
         let result = list_env_pairs_to_update(old_env_vars, new_env_vars).unwrap();
-        assert_eq!(
-            result,
-            vec!["VAR2=new_value2".to_string(), "VAR3=new_value3".to_string()]
-        );
+        let mut expected_result = HashMap::new();
+        expected_result.insert("VAR2".to_string(), "new_value2".to_string());
+        expected_result.insert("VAR3".to_string(), "new_value3".to_string());
         // VAR2 and VAR3 are new variables, both should be in the result
+        assert_eq!(result, expected_result);
     }
 
     #[test]
