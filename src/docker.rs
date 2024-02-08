@@ -125,6 +125,8 @@ pub async fn update_service(
     old_env_vars: Vec<String>,
     new_env_vars: Vec<String>,
 ) -> crate::result::Result<()> {
+    // dbg!(service_name, &old_env_vars, &new_env_vars);
+
     let env_vars_to_delete = list_env_vars_to_delete(old_env_vars.clone(), new_env_vars.clone())?;
     let env_vars_to_update = list_env_pairs_to_update(old_env_vars, new_env_vars)?;
 
@@ -146,7 +148,9 @@ pub async fn update_service(
 
     for env_var in env_vars_to_update {
         command.arg("--env-add").arg(&env_var);
-        args_info.push_str(&format!("--env-add {} ", env_var));
+        // dbg!(&env_var);
+        // println!("env_var: {}", &env_var);
+        args_info.push_str(&format!("--env-add \"{}\" ", env_var));
     }
 
     args_info.pop();

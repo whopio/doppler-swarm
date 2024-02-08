@@ -22,7 +22,10 @@ pub async fn fetch_secrets(
         .await
         .map_err(|e| format!("Cannot read response body: {}", e))?;
 
-    let mut secrets: Vec<String> = body.lines().map(|line| line.to_owned()).collect();
+    let mut secrets: Vec<String> = body
+        .lines()
+        .map(|line| line.to_owned().replace("\\n", "\n"))
+        .collect();
 
     secrets.sort();
 
