@@ -1,5 +1,6 @@
 # Builder
 FROM rust:1-alpine AS builder
+RUN apk add --no-cache openssl-dev build-base
 
 WORKDIR /app
 ADD . /app
