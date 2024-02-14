@@ -30,12 +30,16 @@ pub async fn get_current_env_vars(
             )
         })?;
 
-    let env_var_pairs: Vec<String> = serde_json::from_slice(&buf).map_err(|_e| {
+    let env_var_pairs: Option<Vec<String>> = serde_json::from_slice(&buf).map_err(|_e| {
         format!(
             "Failed to parse docker service inspect output: {}",
             String::from_utf8_lossy(&buf)
         )
     })?;
+
+    let Some(env_var_pairs) = env_var_pairs else {
+        return Ok(HashMap::new());
+    };
 
     let mut env_vars = HashMap::new();
 
