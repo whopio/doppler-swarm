@@ -74,12 +74,11 @@ pub fn list_env_vars_to_delete(
 ) -> crate::result::Result<Vec<String>> {
     let mut env_vars_to_delete = vec![];
 
-    new_env_vars.keys().for_each(|new_env_var_name| {
-        // check that old env vars contain the new env var name
-        if !old_env_vars.contains_key(new_env_var_name) {
-            env_vars_to_delete.push(new_env_var_name.to_owned());
+    for old_env_var in old_env_vars.keys() {
+        if !new_env_vars.contains_key(old_env_var) {
+            env_vars_to_delete.push(old_env_var.to_owned());
         }
-    });
+    }
 
     Ok(env_vars_to_delete)
 }
@@ -112,7 +111,7 @@ pub async fn update_service(
     old_env_vars: HashMap<String, String>,
     new_env_vars: HashMap<String, String>,
 ) -> crate::result::Result<()> {
-    // dbg!(service_name, &old_env_vars, &new_env_vars);
+    dbg!(service_name, &old_env_vars, &new_env_vars);
 
     let env_vars_to_delete = list_env_vars_to_delete(old_env_vars.clone(), new_env_vars.clone())?;
     let env_vars_to_update = list_env_pairs_to_update(old_env_vars, new_env_vars)?;
@@ -510,5 +509,32 @@ mod tests {
             result,
             Ok(vec!["myservice1".to_owned(), "myservice2".to_owned()])
         );
+    }
+
+    #[test]
+    fn test_list_env_vars_to_delete_no_changes() {
+        let mut old_env_vars = HashMap::new();
+        old_env_vars.insert("VAR1".to_string(), "old_value1".to_string());
+        old_env_vars.insert("VAR2".to_string(), "old_value2".to_string());
+
+        let mut new_env_vars = HashMap::new();
+        new_env_vars.insert("VAR1".to_string(), "old_value1".to_string());
+        new_env_vars.insert("VAR2".to_string(), "old_value2".to_string());
+
+        let result = list_env_vars_to_delete(old_env_vars, new_env_vars).unwrap();
+        assert!(result.is_empty()); // No changes, so the result should be an empty Vec
+    }
+
+    #[test]
+    fn test_list_env_vars_to_delete_with_changes() {
+        let mut old_env_vars = HashMap::new();
+        old_env_vars.insert("VAR1".to_string(), "old_value1".to_string());
+        old_env_vars.insert("VAR2".to_string(), "old_value2".to_string());
+
+        let mut new_env_vars = HashMap::new();
+        new_env_vars.insert("VAR1".to_string(), "old_value1".to_string());
+
+        let result = list_env_vars_to_delete(old_env_vars, new_env_vars).unwrap();
+        assert_eq!(result, vec!["VAR2".to_string()]); // VAR2 has been removed, so it should be in the result
     }
 }
