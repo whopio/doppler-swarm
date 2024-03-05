@@ -12,7 +12,7 @@ keywords = ["doppler", "docker", "swarm", "secrets", "configuration"]
 
 [dependencies]
 bytes = "1.5.0"
-env_logger = "0.11.0"
+env_logger = "0.11.3"
 futures = "0.3.30"
 log = "0.4.20"
 reqwest = { version = "0.11.23", default-features = false, features = ["json", "stream", "rustls-tls", "rustls-tls-webpki-roots"] }
